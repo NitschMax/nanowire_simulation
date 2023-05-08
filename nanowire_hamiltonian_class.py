@@ -75,9 +75,11 @@ class nanowire_hamiltonian:
 
         # Build the off-diagonal terms
         upper_off_diag_block = -1 / self.dx**2 * 1 / (
-            2 * self.eff_mass) * block1 - 1j * self.alpha * (+1) * block2
+            2 *
+            self.eff_mass) * block1 - 1j * self.alpha / self.dx * (+1) * block2
         lower_off_diag_block = -1 / self.dx**2 * 1 / (
-            2 * self.eff_mass) * block1 - 1j * self.alpha * (-1) * block2
+            2 *
+            self.eff_mass) * block1 - 1j * self.alpha / self.dx * (-1) * block2
         upper_off_diag = np.array(
             [upper_off_diag_block for site in self.x[1:]])
         lower_off_diag = np.array(
@@ -93,11 +95,11 @@ class nanowire_hamiltonian:
 
         self.hamiltonian = hamiltonian
 
-        return hamiltonian / self.sc_gap
+        return hamiltonian
 
     def diagonalize_hamiltonian(self):
         self.eigvals, self.eigvecs = np.linalg.eigh(self.hamiltonian)
-        return self.eigvals / self.sc_gap, self.eigvecs
+        return self.eigvals, self.eigvecs
 
     def get_smallest_eigenvalues_and_vectors(self, num_eigvals):
         order = np.argsort(np.abs(self.eigvals))
@@ -108,7 +110,7 @@ class nanowire_hamiltonian:
         result_eigvals = result_eigvals[re_order]
         result_eigvecs = result_eigvecs[:, re_order]
 
-        return result_eigvals / self.sc_gap, result_eigvecs
+        return result_eigvals, result_eigvecs
 
     # Function to calculate the absolute value of the wavefunction on each site
     # This corresponds to the sum of the electron and hole and spin up and spin down wavefunctions on each site
@@ -129,10 +131,15 @@ class nanowire_hamiltonian:
         return abs_psi_plus, abs_psi_minus
 
     # Routine that only calculates the eigenvalues with the smallest absolute value via eigsh
-    def calculate_only_smallest_eigenvalues(self, num_eigvals=10):
-        hamiltonian = self.build_hamiltonian()
-        eigvals, eigvecs = eigsh(hamiltonian, k=num_eigvals, which='SM')
-        return eigvals / self.sc_gap, eigvecs
+    def calculate_only_smallest_eigenvalues(self, num_eigvals=10, sigma=0):
+        print(self.hamiltonian.shape)
+        eigvals, eigvecs = eigsh(self.hamiltonian,
+                                 k=num_eigvals,
+                                 which='LM',
+                                 mode='normal',
+                                 sigma=sigma)
+        print(eigvals)
+        return eigvals, eigvecs
 
     # Routine that compares differen diagonalization methods
     def compare_diagonalization_methods(self):
@@ -140,4 +147,6 @@ class nanowire_hamiltonian:
 
         print(self.diagonalize_hamiltonian()[0])
         print(self.get_smallest_eigenvalues_and_vectors(4)[0])
-        print(self.calculate_only_smallest_eigenvalues(10)[0])
+
+        eig_arnoldi = self.calculate_only_smallest_eigenvalues(4)[0]
+        print(eig_arnoldi)

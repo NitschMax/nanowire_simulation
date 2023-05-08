@@ -14,5 +14,5 @@ def nm_to_au():
 
 
 def m_e_to_au():
-    mass_factor = 1 / 5.48579909070e-4
+    mass_factor = 1.0
     return mass_factor
