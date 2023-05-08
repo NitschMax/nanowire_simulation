@@ -114,10 +114,23 @@ class nanowire_hamiltonian:
 
     # Function to calculate the absolute value of the wavefunction on each site
     # This corresponds to the sum of the electron and hole and spin up and spin down wavefunctions on each site
-    def calculate_abs_wavefunctions(self, eigvecs):
+    def calculate_abs_wavefunctions(self, eigvecs, operator=None):
         abs_wavefunction = np.abs(eigvecs[0::4])**2 + np.abs(
             eigvecs[1::4])**2 + np.abs(eigvecs[2::4])**2 + np.abs(
                 eigvecs[3::4])**2
+
+        # reshape the 1-d array to a 2-d array with first dimension the number of sites and second the spin degrees of freedom with 4 dimensions
+        n_sites = eigvecs.shape[0] // 4
+        reshaped_eigvecs = eigvecs.reshape((n_sites, 4))
+
+        if operator is None:
+            operator = np.kron(np.eye(2), np.eye(2))
+        elif operator == "sigma_z":
+            operator = np.kron(np.eye(2), np.array([[1, 0], [0, -1]]))
+
+        abs_wavefunction = np.array(
+            [vec.conj().T @ operator @ vec for vec in reshaped_eigvecs]).real
+
         return abs_wavefunction
 
     # Calculate the absolute value of the psi_0 + i psi_1 wavefunction on each site and

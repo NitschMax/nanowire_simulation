@@ -104,7 +104,6 @@ def plot_wavefunctions(alpha, zeeman, chem_pot, sc_gap, eff_mass, nw_length,
     hami.build_hamiltonian()
     eigenvalues, eigenvectors = hami.calculate_only_smallest_eigenvalues(
         num_eigvals=2)
-    abs_eigenvectors = hami.calculate_abs_wavefunctions(eigenvectors)
     abs_eigenvectors = hami.calculate_abs_gamma_wavefunctions(eigenvectors)
 
     print('The two lowest eigenvalues are: ', eigenvalues)
