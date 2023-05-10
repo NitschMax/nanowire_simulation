@@ -51,10 +51,7 @@ class nanowire_hamiltonian:
     # Function that builds the matrix representation of the Hamiltonian
     def build_hamiltonian(self):
         # Define the sigma matrices using numpy
-        sigma_0 = np.array([[1, 0], [0, 1]])
-        sigma_x = np.array([[0, 1], [1, 0]])
-        sigma_y = np.array([[0, -1j], [1j, 0]])
-        sigma_z = np.array([[1, 0], [0, -1]])
+        sigma_0, sigma_x, sigma_y, sigma_z = self.pauli_matrices()
 
         # Build the block matrices representing the repective terms 1. sigma represents electron-hole dof 2. sigma represents spin dof
         block1 = np.kron(sigma_z, sigma_0)
@@ -114,14 +111,25 @@ class nanowire_hamiltonian:
 
     # Function to calculate the absolute value of the wavefunction on each site
     # This corresponds to the sum of the electron and hole and spin up and spin down wavefunctions on each site
-    def calculate_abs_wavefunctions(self, eigvecs, operator=None):
-        abs_wavefunction = np.abs(eigvecs[0::4])**2 + np.abs(
-            eigvecs[1::4])**2 + np.abs(eigvecs[2::4])**2 + np.abs(
-                eigvecs[3::4])**2
+    def adjust_global_phase(self, eigvecs):
+        angle = np.angle(eigvecs[0])
+        return eigvecs * np.exp(-1j * angle)
 
+    def calculate_operator_expectation(self, eigvec, operator=None):
         # reshape the 1-d array to a 2-d array with first dimension the number of sites and second the spin degrees of freedom with 4 dimensions
-        n_sites = eigvecs.shape[0] // 4
-        reshaped_eigvecs = eigvecs.reshape((n_sites, 4))
+        n_sites = eigvec.shape[0] // 4
+        eigvec = self.adjust_global_phase(eigvec)
+        reshaped_eigvec = eigvec.reshape((n_sites, 4))
+
+        sigma_0, sigma_x, sigma_y, sigma_z = self.pauli_matrices()
+        part_hole_op = np.kron(sigma_y, sigma_y)
+        part_hole_op = block_diag(*[part_hole_op for site in self.x])
+
+        # Print absolute value and angle of reshaped_eigvec up to 15 digits
+        print(np.around(np.abs(reshaped_eigvec), decimals=15))
+        print(np.around(np.angle(reshaped_eigvec), decimals=15))
+
+        # print((part_hole_op @ np.conj(eigvec)).reshape((n_sites, 4)))
 
         if operator is None:
             operator = np.kron(np.eye(2), np.eye(2))
@@ -129,29 +137,31 @@ class nanowire_hamiltonian:
             operator = np.kron(np.eye(2), np.array([[1, 0], [0, -1]]))
 
         abs_wavefunction = np.array(
-            [vec.conj().T @ operator @ vec for vec in reshaped_eigvecs]).real
+            [vec.conj().T @ operator @ vec for vec in reshaped_eigvec]).real
 
         return abs_wavefunction
 
     # Calculate the absolute value of the psi_0 + i psi_1 wavefunction on each site and
-    def calculate_abs_gamma_wavefunctions(self, eigvecs):
-        psi_plus = eigvecs[:, 0] + eigvecs[:, 1]
-        abs_psi_plus = self.calculate_abs_wavefunctions(psi_plus)
+    def calculate_majorana_wavefunctions(self, eigvecs, phi):
+        psi_plus = np.exp(1j * phi) * eigvecs[:, 0] + np.exp(
+            -1j * phi) * eigvecs[:, 1]
+        psi_minus = 1j * np.exp(1j * phi) * eigvecs[:, 0] - 1j * np.exp(
+            -1j * phi) * eigvecs[:, 1]
+        return np.array([psi_plus, psi_minus]).transpose()
 
-        psi_minus = eigvecs[:, 0] - eigvecs[:, 1]
-        abs_psi_minus = self.calculate_abs_wavefunctions(psi_minus)
+    def calculate_abs_wavefunctions(self, eigvecs):
+        vec_0 = self.calculate_operator_expectation(eigvecs[:, 0])
+        vec_1 = self.calculate_operator_expectation(eigvecs[:, 1])
 
-        return abs_psi_plus, abs_psi_minus
+        return vec_0, vec_1
 
     # Routine that only calculates the eigenvalues with the smallest absolute value via eigsh
     def calculate_only_smallest_eigenvalues(self, num_eigvals=10, sigma=0):
-        print(self.hamiltonian.shape)
         eigvals, eigvecs = eigsh(self.hamiltonian,
                                  k=num_eigvals,
                                  which='LM',
                                  mode='normal',
                                  sigma=sigma)
-        print(eigvals)
         return eigvals, eigvecs
 
     # Routine that compares differen diagonalization methods
@@ -163,3 +173,10 @@ class nanowire_hamiltonian:
 
         eig_arnoldi = self.calculate_only_smallest_eigenvalues(4)[0]
         print(eig_arnoldi)
+
+    def pauli_matrices(self):
+        sigma_0 = np.array([[1, 0], [0, 1]])
+        sigma_x = np.array([[0, 1], [1, 0]])
+        sigma_y = np.array([[0, -1j], [1j, 0]])
+        sigma_z = np.array([[1, 0], [0, -1]])
+        return sigma_0, sigma_x, sigma_y, sigma_z
