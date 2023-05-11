@@ -118,18 +118,11 @@ class nanowire_hamiltonian:
     def calculate_operator_expectation(self, eigvec, operator=None):
         # reshape the 1-d array to a 2-d array with first dimension the number of sites and second the spin degrees of freedom with 4 dimensions
         n_sites = eigvec.shape[0] // 4
-        eigvec = self.adjust_global_phase(eigvec)
         reshaped_eigvec = eigvec.reshape((n_sites, 4))
 
         sigma_0, sigma_x, sigma_y, sigma_z = self.pauli_matrices()
         part_hole_op = np.kron(sigma_y, sigma_y)
         part_hole_op = block_diag(*[part_hole_op for site in self.x])
-
-        # Print absolute value and angle of reshaped_eigvec up to 15 digits
-        print(np.around(np.abs(reshaped_eigvec), decimals=15))
-        print(np.around(np.angle(reshaped_eigvec), decimals=15))
-
-        # print((part_hole_op @ np.conj(eigvec)).reshape((n_sites, 4)))
 
         if operator is None:
             operator = np.kron(np.eye(2), np.eye(2))
@@ -156,12 +149,20 @@ class nanowire_hamiltonian:
         return vec_0, vec_1
 
     # Routine that only calculates the eigenvalues with the smallest absolute value via eigsh
-    def calculate_only_smallest_eigenvalues(self, num_eigvals=10, sigma=0):
+    def calculate_only_smallest_eigenvalues(self,
+                                            num_eigvals=10,
+                                            sigma=0,
+                                            positive_first=False):
         eigvals, eigvecs = eigsh(self.hamiltonian,
                                  k=num_eigvals,
                                  which='LM',
                                  mode='normal',
                                  sigma=sigma)
+
+        if num_eigvals == 2 and positive_first:
+            order = np.argsort(-eigvals)
+            eigvals = eigvals[order]
+            eigvecs = eigvecs[:, order]
         return eigvals, eigvecs
 
     # Routine that compares differen diagonalization methods

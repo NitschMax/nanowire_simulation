@@ -46,11 +46,11 @@ def initialize_standard_hamiltonian():
     # define the hamiltonian parameters, energies in meV, length in nm, mass in m_e
     alpha = 50.0
     zeeman = 4.0
-    chem_pot = +6.0
+    chem_pot = +2.0
     sc_gap = 0.5
     eff_mass = 0.015
     nw_length = 2e+3
-    position_grid = 500
+    position_grid = 1000
 
     # initialize the potential barriek
     poti = pb.potential_barrier(potential_function, x0, sigma, barrier_height)

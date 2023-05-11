@@ -20,18 +20,26 @@ np.set_printoptions(precision=8)
 # Define a function that calculates and plots the absolute value of the wavefunctions of the two lowest eigenvalues
 
 
-def overlap_between_wavefunctions(eigenvecs, phi=0.0):
-    overlap = 4 * (np.exp(2j * phi) * eigenvecs[:, 0] *
-                   np.conj(eigenvecs[:, 1])).real
+def overlaps_majoranas_analytical(eigenvecs, phi=0.0, max_idx=-1):
+    overlap = (np.exp(+2j * phi) * eigenvecs[:max_idx, 0] *
+               np.conj(eigenvecs[:max_idx, 1])).real
     return overlap
 
 
-def scalar_overlap_between_wavefunctions(phi, eigenvecs):
-    return overlap_between_wavefunctions(eigenvecs, phi=phi).sum()
+def scalar_overlaps_majoranas_analytical(phi, eigenvecs, max_idx=-1):
+    return np.abs(1 - overlaps_majoranas_analytical(
+        eigenvecs, phi=phi, max_idx=max_idx).sum())**2
 
 
-def inverse_scalar_overlap_between_wavefunctions(phi, eigenvecs):
-    return 1 / scalar_overlap_between_wavefunctions(phi, eigenvecs)
+def scalar_majoranas_avoiding_same_site(eigenvecs):
+    return np.abs(np.abs(eigenvecs[:, 0])**2 -
+                  np.abs(eigenvecs[:, 1])**2).sum()
+    return np.abs((eigenvecs[:, 0] * np.conj(eigenvecs[:, 1])).sum())**2
+
+
+def majoranas_avoiding_same_site(phi, hami, eigenvectors):
+    return scalar_majoranas_avoiding_same_site(
+        hami.calculate_majorana_wavefunctions(eigenvectors, phi))
 
 
 def plot_wavefunctions(alpha,
@@ -50,49 +58,129 @@ def plot_wavefunctions(alpha,
                                    nw_length, position_grid, poti)
     hami.build_hamiltonian()
     eigenvalues, eigenvectors = hami.calculate_only_smallest_eigenvalues(
-        num_eigvals=2)
+        num_eigvals=2, positive_first=True)
+
     # Numerically find phi that minimizes the overlap via optimization
     # Put behind flag to avoid unnecessary calculations
     if minimize_overlap:
-        phi_min = optimize.minimize_scalar(
-            scalar_overlap_between_wavefunctions,
-            args=(eigenvectors, ),
-            method='bounded',
+        # Try to find minima and maxima of the overlap via numerical optimization
+        phi_min_num = optimize.minimize_scalar(
+            lambda phi, hami, eigenvectors: majoranas_avoiding_same_site(
+                phi, hami, eigenvectors),
+            args=(hami, eigenvectors),
             bounds=(0, np.pi / 2))
-        print('The phi that minimizes the overlap is: ', phi_min.x / np.pi,
-              'pi')
-        majorana_phi = phi_min.x
+        print('The phi that minimizes the Majorana avoidance is: ',
+              phi_min_num.x / np.pi, 'pi')
+        print('The nummerically minimized avoidance is: ',
+              majoranas_avoiding_same_site(phi_min_num.x, hami, eigenvectors))
 
     # Numerically find phi that maximizes the overlap via optimization
+    # First guess is pi/4
     # Put behind flag to avoid unnecessary calculations
     if maximize_overlap:
-        phi_max = optimize.minimize_scalar(
-            inverse_scalar_overlap_between_wavefunctions,
-            args=(eigenvectors, ),
-            method='bounded',
+        phi_max_num = optimize.minimize_scalar(
+            lambda phi, hami, eigenvectors: -majoranas_avoiding_same_site(
+                phi, hami, eigenvectors),
+            args=(hami, eigenvectors),
             bounds=(0, np.pi / 2))
-        print('The phi that maximizes the overlap is: ', phi_max.x / np.pi,
-              'pi')
-        majorana_phi = phi_max.x
+        print('The phi that maximizes the Majorana avoidance is: ',
+              phi_max_num.x / np.pi, 'pi')
+        print('The nummerically maximized avoidance is: ',
+              majoranas_avoiding_same_site(phi_max_num.x, hami, eigenvectors))
 
+    print('The two lowest eigenvalues are: ', eigenvalues)
+    fig, ax = plt.subplots(2, 2, figsize=(8, 8))
+
+    plot_wavefunctions_majorana_basis(
+        fig,
+        ax[0, 0],
+        hami,
+        eigenvectors,
+        phi_min_num.x,
+        majorana_basis,
+        title='Maximization of occupation on same site')
+    plot_relative_phases_majorana_basis(
+        fig,
+        ax[1, 0],
+        hami,
+        eigenvectors,
+        phi_min_num.x,
+        majorana_basis,
+        title='Relative phase between Majoranas')
+
+    plot_wavefunctions_majorana_basis(
+        fig,
+        ax[0, 1],
+        hami,
+        eigenvectors,
+        phi_max_num.x,
+        majorana_basis,
+        title='Minimization of occupation on same site')
+    plot_relative_phases_majorana_basis(
+        fig,
+        ax[1, 1],
+        hami,
+        eigenvectors,
+        phi_max_num.x,
+        majorana_basis,
+        title='Relative phase between Majoranas')
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_relative_phases_majorana_basis(fig,
+                                        ax,
+                                        hami,
+                                        eigenvectors,
+                                        majorana_phi,
+                                        majorana_basis,
+                                        title=''):
     if majorana_basis:
         eigenvectors = hami.calculate_majorana_wavefunctions(eigenvectors,
                                                              phi=majorana_phi)
-    abs_eigenvectors = hami.calculate_abs_wavefunctions(eigenvectors)
 
-    print('The two lowest eigenvalues are: ', eigenvalues)
+    angles = np.angle(eigenvectors[:, 0] *
+                      np.conj(eigenvectors[:, 1])).reshape(hami.x.shape[0], 4)
+    print('The phase difference between the two Majoranas is: ',
+          angles / np.pi, 'pi')
+
     # Include second axis for the potential barrier
 
-    fig, ax1 = plt.subplots()
-    ax2 = ax1.twinx()
-    ax1.plot(hami.x / hami.nw_length, abs_eigenvectors[0], 'r')
-    ax1.plot(hami.x / hami.nw_length, abs_eigenvectors[1], 'g')
-    ax2.plot(hami.x / hami.nw_length, poti(hami.x) / hami.sc_gap, 'b')
-    ax1.set_xlabel('Position')
-    ax1.set_ylabel('Wavefunction')
+    ax.plot(hami.x / hami.nw_length, (angles[:, 1] / np.pi))
+    ax.set_xlabel('x / L')
+    ax.set_ylabel('Phase angle / $\pi$')
+    ax.yaxis.set_major_locator(plt.MaxNLocator(5))
+    ax.set_title(title)
+
+
+# Define a function that plots the wavefunction in the Majorana basis
+def plot_wavefunctions_majorana_basis(fig,
+                                      ax,
+                                      hami,
+                                      eigenvectors,
+                                      majorana_phi,
+                                      majorana_basis,
+                                      title=''):
+    if majorana_basis:
+        eigenvectors = hami.calculate_majorana_wavefunctions(eigenvectors,
+                                                             phi=majorana_phi)
+    print('Absolute value of the wavefunctions: ',
+          np.abs(eigenvectors[:, 0].reshape(hami.x.shape[0], 4)))
+    abs_eigenvectors = hami.calculate_abs_wavefunctions(eigenvectors)
+
+    # Include second axis for the potential barrier
+
+    ax2 = ax.twinx()
+    ax.plot(hami.x / hami.nw_length, abs_eigenvectors[0], 'r')
+    ax.plot(hami.x / hami.nw_length, abs_eigenvectors[1], 'g')
+    ax2.plot(hami.x / hami.nw_length, hami.pot_func(hami.x) / hami.sc_gap, 'b')
+    ax.set_xlabel('Position')
+    ax.set_ylabel('Wavefunction')
     # Potential barrier is scaled by the superconducting gap
     ax2.set_ylabel(r'Potential barrier ($\Delta$)')
-    plt.show()
+    ax.set_title(title)
+    ax.yaxis.set_major_locator(plt.MaxNLocator(5))
+    ax2.yaxis.set_major_locator(plt.MaxNLocator(5))
 
 
 def phase_sweep(alpha,
