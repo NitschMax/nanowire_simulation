@@ -26,3 +26,24 @@ class potential_barrier:
     def __str__(self):
         return 'Potential barrier with x0 = %g and sigma = %g' % (self.x0,
                                                                   self.sigma)
+
+    # Creat a string specifying the directory where the data will be saved
+    # Write the floats in format 1.0e-3 as 0.001 with 3 decimals
+    # if barrier_height is 0 return 'no_barrier'
+    def get_directory_name(self):
+        float_format = '.3e'
+        dic = {
+            'typ': 'gauss',
+            'barrier_height': format(self.barrier_height, float_format),
+            'sigma': format(self.sigma, float_format),
+            'x0': format(self.x0, float_format),
+        }
+        directory = ''
+        for key in dic:
+            directory += key + '_' + str(dic[key]) + '_'
+        directory = directory[:-1]
+
+        if self.barrier_height == 0:
+            directory = 'no_barrier'
+
+        return directory

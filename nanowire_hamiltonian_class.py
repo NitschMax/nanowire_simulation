@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from scipy.linalg import block_diag
 from scipy.sparse.linalg import eigsh
@@ -22,6 +24,75 @@ class nanowire_hamiltonian:
 
         self.convert_units()
         self.initialize_grid()
+
+        self.hamiltonian = None
+        self.eigvals = None
+        self.eigvecs = None
+
+    def reset_hamiltonian(self):
+        self.hamiltonian = None
+        self.eigvals = None
+        self.eigvecs = None
+
+    def adjust_chem_pot(self, chem_pot):
+        self.chem_pot = chem_pot
+        self.chem_pot *= uc.meV_to_au()
+        self.reset_hamiltonian()
+
+    def adjust_zeeman(self, zeeman):
+        self.zeeman = zeeman
+        self.zeeman *= uc.meV_to_au()
+        self.reset_hamiltonian()
+
+    def get_sc_gap_meV(self):
+        return self.sc_gap / uc.meV_to_au()
+
+    # Define a function that return a file name for the Hamiltonian, use a dictionary to create a string
+    # Restrict precision to 3 digits, write floats in format with power as in 1.234e-05
+    def get_file_name(self):
+        name_dict = {
+            'alpha': self.alpha,
+            'zeeman': self.zeeman,
+            'chem_pot': self.chem_pot,
+            'sc_gap': self.sc_gap,
+            'eff_mass': self.eff_mass,
+            'nw_length': self.nw_length,
+            'grid_points': self.grid_points
+        }
+        file_name = ''
+        for key, value in name_dict.items():
+            file_name += key + '_' + format(value, '.3e') + '_'
+        return file_name
+
+    def get_data_directory(self):
+        directory = '/Users/ma0274ni/Documents/projects/topological_nanowire/data/' + self.pot_func.get_directory_name(
+        ) + '/'
+        # Check if the directory exists, if not create it
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        return directory + self.get_file_name()
+
+    def save_data(self):
+        if self.eigvals is None or self.eigvecs is None:
+            raise ValueError('You need to run the diagonalization first!')
+        else:
+            np.save(self.get_data_directory() + 'eigvals.npy', self.eigvals)
+            np.save(self.get_data_directory() + 'eigvecs.npy', self.eigvecs)
+
+    def check_if_data_exists(self):
+        return os.path.exists(self.get_data_directory() + 'eigvals.npy')
+
+    def load_data(self):
+        # Check if the data exists
+        if not self.check_if_data_exists():
+            print('Data does not exist, calculating eigenvalues...')
+            self.calculate_only_smallest_eigenvalues()
+            self.save_data()
+        else:
+            self.eigvals = np.load(self.get_data_directory() + 'eigvals.npy')
+            self.eigvecs = np.load(self.get_data_directory() + 'eigvecs.npy')
+        return self.eigvals, self.eigvecs
 
     # Conversion of units to atomic units, previously energies were in meV, lengths in nm, masses in m_e
     def convert_units(self):
@@ -94,10 +165,6 @@ class nanowire_hamiltonian:
 
         return hamiltonian
 
-    def diagonalize_hamiltonian(self):
-        self.eigvals, self.eigvecs = np.linalg.eigh(self.hamiltonian)
-        return self.eigvals, self.eigvecs
-
     def get_smallest_eigenvalues_and_vectors(self, num_eigvals):
         order = np.argsort(np.abs(self.eigvals))
         result_eigvals = self.eigvals[order][:num_eigvals]
@@ -140,7 +207,10 @@ class nanowire_hamiltonian:
             -1j * phi) * eigvecs[:, 1]
         psi_minus = 1j * np.exp(1j * phi) * eigvecs[:, 0] - 1j * np.exp(
             -1j * phi) * eigvecs[:, 1]
-        return np.array([psi_plus, psi_minus]).transpose()
+        # Order array of [psi_plus, psi_minus] after the absolute value of the first entry
+        result = np.array([psi_plus, psi_minus]).transpose()
+        order = np.argsort(np.abs(result[1]))
+        return result[:, order]
 
     def calculate_abs_wavefunctions(self, eigvecs):
         vec_0 = self.calculate_operator_expectation(eigvecs[:, 0])
@@ -159,10 +229,31 @@ class nanowire_hamiltonian:
                                  mode='normal',
                                  sigma=sigma)
 
-        if num_eigvals == 2 and positive_first:
-            order = np.argsort(-eigvals)
-            eigvals = eigvals[order]
-            eigvecs = eigvecs[:, order]
+        self.eigvals = eigvals
+        self.eigvecs = eigvecs
+        if positive_first and num_eigvals == 2:
+            return self.return_smallest_positive_and_negative_eigenvalues_and_vectors(
+            )
+        else:
+            return eigvals, eigvecs
+
+    def diagonalize_hamiltonian(self):
+        self.eigvals, self.eigvecs = np.linalg.eigh(self.hamiltonian)
+        return self.eigvals, self.eigvecs
+
+    def return_smallest_positive_and_negative_eigenvalues_and_vectors(self):
+        if self.eigvals is None:
+            print("No eigenvalues calculated yet. Calculating now.")
+            self.calculate_only_smallest_eigenvalues()
+
+        # Find positive and negative eigenvalues smallest in amplitude and their eigenvectors
+        positive_eigval = np.min(self.eigvals[self.eigvals > 0])
+        negative_eigval = np.max(self.eigvals[self.eigvals < 0])
+        positive_eigvec = self.eigvecs[:, self.eigvals == positive_eigval]
+        negative_eigvec = self.eigvecs[:, self.eigvals == negative_eigval]
+
+        eigvals = np.array([positive_eigval, negative_eigval])
+        eigvecs = np.concatenate((positive_eigvec, negative_eigvec), axis=1)
         return eigvals, eigvecs
 
     # Routine that compares differen diagonalization methods
